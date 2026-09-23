@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+# A cancelled run can leave a version untagged, so pushes queue instead of cancelling each other.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Read version from file
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "major=v${VERSION%%.*}" >> "$GITHUB_OUTPUT"
+
+      - name: Check if tag exists
+        id: check_tag
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create tag
+        if: steps.check_tag.outputs.exists == 'false'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git tag "$VERSION"
+          git push origin "refs/tags/$VERSION"
+
+      # Users pin the floating major tag (e.g. v1), so it has to follow the latest release of that major.
+      - name: Move major version tag
+        if: steps.check_tag.outputs.exists == 'false'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          MAJOR: ${{ steps.version.outputs.major }}
+        run: |
+          set -euo pipefail
+          git tag -f "$MAJOR" "$VERSION"
+          git push --force origin "refs/tags/$MAJOR"
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          make_latest: true
+          generate_release_notes: true

@@ -1,0 +1,123 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  without-api-key:
+    name: Skip without an API key (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Resolve release
+        id: release
+        uses: ./
+        with:
+          api-key: ''
+          project-id: '1'
+
+      - name: Check that every output is empty
+        env:
+          RELEASE_ID: ${{ steps.release.outputs.release-id }}
+          RELEASE: ${{ steps.release.outputs.release }}
+        run: |
+          if [ -n "$RELEASE_ID" ] || [ -n "$RELEASE" ]; then
+            echo "::error::Expected empty outputs without an API key, got release-id '$RELEASE_ID'"
+            exit 1
+          fi
+
+  # Pull requests from forks get no secrets, and a new copy of this repository has none set, so the
+  # job that resolves a real release runs only when the API key secret is available.
+  credentials:
+    name: Check test credentials
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      - name: Check for the API key secret
+        id: check
+        env:
+          API_KEY: ${{ secrets.POSTHOG_CLI_API_KEY }}
+        run: |
+          if [ -n "$API_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Real release test skipped::Set the POSTHOG_CLI_API_KEY secret and the POSTHOG_CLI_PROJECT_ID variable to resolve a real release in the test workflow."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  resolve:
+    name: Resolve a release (${{ matrix.os }})
+    needs: credentials
+    if: needs.credentials.outputs.available == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # One release name per OS, because two jobs that create the same release at once can collide.
+      - name: Resolve release
+        id: release
+        uses: ./
+        with:
+          api-key: ${{ secrets.POSTHOG_CLI_API_KEY }}
+          project-id: ${{ vars.POSTHOG_CLI_PROJECT_ID }}
+          host: ${{ vars.POSTHOG_CLI_HOST }}
+          release-name: resolve-release-test-${{ runner.os }}
+
+      - name: Resolve release with a build number
+        id: build
+        uses: ./
+        with:
+          api-key: ${{ secrets.POSTHOG_CLI_API_KEY }}
+          project-id: ${{ vars.POSTHOG_CLI_PROJECT_ID }}
+          host: ${{ vars.POSTHOG_CLI_HOST }}
+          release-name: resolve-release-test-${{ runner.os }}
+          release-version: ${{ github.event.pull_request.head.sha || github.sha }}
+          build: '42'
+
+      - name: Check the outputs
+        env:
+          RELEASE_ID: ${{ steps.release.outputs.release-id }}
+          RELEASE_NAME: ${{ steps.release.outputs.release-name }}
+          RELEASE_VERSION: ${{ steps.release.outputs.release-version }}
+          RELEASE: ${{ steps.release.outputs.release }}
+          BUILD_RELEASE_ID: ${{ steps.build.outputs.release-id }}
+          BUILD_RELEASE_VERSION: ${{ steps.build.outputs.release-version }}
+          EXPECTED_NAME: resolve-release-test-${{ runner.os }}
+          EXPECTED_VERSION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          uuid='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          [ -n "$RELEASE_ID" ] || fail "No release id. Set the POSTHOG_CLI_API_KEY secret and the POSTHOG_CLI_PROJECT_ID variable, then check the log of the resolve step."
+          [[ "$RELEASE_ID" =~ $uuid ]] || fail "release-id '$RELEASE_ID' is not a UUID"
+          [ "$RELEASE_NAME" = "$EXPECTED_NAME" ] || fail "release-name is '$RELEASE_NAME', expected '$EXPECTED_NAME'"
+          [ "$RELEASE_VERSION" = "$EXPECTED_VERSION" ] || fail "release-version is '$RELEASE_VERSION', expected '$EXPECTED_VERSION'"
+          jq -e --arg id "$RELEASE_ID" '.id == $id' <<<"$RELEASE" >/dev/null || fail "release JSON does not carry the release id"
+          [ "$BUILD_RELEASE_VERSION" = "$EXPECTED_VERSION+42" ] || fail "release-version with a build is '$BUILD_RELEASE_VERSION', expected '$EXPECTED_VERSION+42'"
+          [ "$BUILD_RELEASE_ID" != "$RELEASE_ID" ] || fail "a build number did not give a separate release"

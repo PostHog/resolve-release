@@ -1,0 +1,75 @@
+name: "PostHog/resolve-release"
+
+description: "Create or find the PostHog error tracking release for a build and output its id"
+
+author: "PostHog"
+
+branding:
+  icon: tag
+  color: white
+
+inputs:
+  api-key:
+    description: "PostHog personal API key with error tracking write scope. See https://app.posthog.com/settings/user-api-keys#variables. When empty, the action resolves no release and every output is empty"
+    required: true
+  project-id:
+    description: "PostHog project ID. See https://app.posthog.com/settings/project#variables"
+    required: true
+  host:
+    description: "PostHog host URL. If you use the US cloud, you don't need to set this. For the EU cloud, set `https://eu.posthog.com`"
+    required: false
+  release-name:
+    description: "Release name. If not provided, the action uses the repository name"
+    required: false
+  release-version:
+    description: "Release version (e.g., 1.4.0 or a commit SHA). If not provided, the action uses the commit SHA, which on a pull request is the head commit of the pull request"
+    required: false
+  build:
+    description: "Build number (e.g., 42). The release version becomes `<release-version>+<build>`, so each build number is a separate release. Without `release-version`, the build number alone is the version"
+    required: false
+
+outputs:
+  release-id:
+    description: "ID of the release. Give it to your app as the `POSTHOG_RELEASE_ID` environment variable. Empty when no release was resolved"
+    value: ${{ steps.resolve.outputs.release-id }}
+  release-name:
+    description: "Name of the release in PostHog"
+    value: ${{ steps.resolve.outputs.release-name }}
+  release-version:
+    description: "Version of the release in PostHog, including the build number when one was given"
+    value: ${{ steps.resolve.outputs.release-version }}
+  release:
+    description: "The whole release as JSON. Read a field with `fromJSON(steps.<step-id>.outputs.release).<field>`"
+    value: ${{ steps.resolve.outputs.release }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve release
+      id: resolve
+      shell: bash
+      env:
+        # The installer is pinned to an immutable release tag and checksum-verified before it runs.
+        # It carries the checksums of the CLI archives it downloads, so this hash also pins the binary.
+        # To upgrade, change the version and recompute the hash:
+        #   curl -LsSf "https://github.com/PostHog/posthog/releases/download/posthog-cli%2Fv<X.Y.Z>/posthog-cli-installer.sh" | shasum -a 256
+        POSTHOG_CLI_VERSION: "0.18.3"
+        POSTHOG_CLI_INSTALLER_SHA256: "9bcb358126fe8339c059f2d7fc252e048185d975838466dcc4c550b1fb8280d8"
+        POSTHOG_CLI_INSTALL_DIR: ${{ runner.temp }}/posthog-cli
+        POSTHOG_CLI_NO_MODIFY_PATH: "1"
+        POSTHOG_CLI_API_KEY: ${{ inputs.api-key }}
+        POSTHOG_CLI_PROJECT_ID: ${{ inputs.project-id }}
+        INPUT_HOST: ${{ inputs.host }}
+        INPUT_RELEASE_NAME: ${{ inputs.release-name }}
+        INPUT_RELEASE_VERSION: ${{ inputs.release-version }}
+        INPUT_BUILD: ${{ inputs.build }}
+        # The CLI reads the branch, commit, and repository of the release from these variables. On a
+        # pull request, the default SHA is a merge commit that exists in no branch, so the head commit
+        # and branch of the pull request replace it. Runners that do not export these variables, such
+        # as Depot CI, get them from the context.
+        GITHUB_ACTIONS: "true"
+        GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        GITHUB_REF_NAME: ${{ github.head_ref || github.ref_name }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+      run: bash "$GITHUB_ACTION_PATH/resolve.sh"

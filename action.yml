@@ -1,6 +1,6 @@
 name: "PostHog/resolve-release"
 
-description: "Create or find the PostHog error tracking release for a build and output its id"
+description: "Create or find the PostHog error tracking release for a build with hog and the job's OIDC token, and output its id"
 
 author: "PostHog"
 
@@ -9,14 +9,17 @@ branding:
   color: white
 
 inputs:
-  api-key:
-    description: "PostHog personal API key with error tracking write scope. See https://app.posthog.com/settings/user-api-keys#variables. When empty, the action resolves no release and every output is empty"
+  hog-version:
+    description: "The hog version to install, such as 0.1.0. The action downloads it from releases.posthog.com and checks it against that version's manifest"
     required: true
+  hog-sha256:
+    description: "The SHA-256 of the hog archive for the runner, from the version's manifest.json. When set, the download must match it, which pins the exact binary"
+    required: false
   project-id:
-    description: "PostHog project ID. See https://app.posthog.com/settings/project#variables"
-    required: true
+    description: "PostHog project ID. Defaults to `projectId` in posthog.json, then HOG_PROJECT_ID"
+    required: false
   host:
-    description: "PostHog host URL. If you use the US cloud, you don't need to set this. For the EU cloud, set `https://eu.posthog.com`"
+    description: "PostHog host URL. Defaults to `host` in posthog.json, then HOG_HOST, then the US cloud. For the EU cloud, set `https://eu.posthog.com`"
     required: false
   release-name:
     description: "Release name. If not provided, the action uses the repository name"
@@ -41,6 +44,9 @@ outputs:
   release:
     description: "The whole release as JSON. Read a field with `fromJSON(steps.<step-id>.outputs.release).<field>`"
     value: ${{ steps.resolve.outputs.release }}
+  hog-path:
+    description: "Path to the hog binary the action installed, so later steps can run it, for example to upload source maps. Empty when no release was resolved"
+    value: ${{ steps.resolve.outputs.hog-path }}
 
 runs:
   using: "composite"
@@ -49,24 +55,18 @@ runs:
       id: resolve
       shell: bash
       env:
-        # The installer is pinned to an immutable release tag and checksum-verified before it runs.
-        # It carries the checksums of the CLI archives it downloads, so this hash also pins the binary.
-        # To upgrade, change the version and recompute the hash:
-        #   curl -LsSf "https://github.com/PostHog/posthog/releases/download/posthog-cli%2Fv<X.Y.Z>/posthog-cli-installer.sh" | shasum -a 256
-        POSTHOG_CLI_VERSION: "0.18.3"
-        POSTHOG_CLI_INSTALLER_SHA256: "9bcb358126fe8339c059f2d7fc252e048185d975838466dcc4c550b1fb8280d8"
-        POSTHOG_CLI_INSTALL_DIR: ${{ runner.temp }}/posthog-cli
-        POSTHOG_CLI_NO_MODIFY_PATH: "1"
-        POSTHOG_CLI_API_KEY: ${{ inputs.api-key }}
-        POSTHOG_CLI_PROJECT_ID: ${{ inputs.project-id }}
+        HOG_VERSION: ${{ inputs.hog-version }}
+        HOG_SHA256: ${{ inputs.hog-sha256 }}
+        INPUT_PROJECT_ID: ${{ inputs.project-id }}
         INPUT_HOST: ${{ inputs.host }}
         INPUT_RELEASE_NAME: ${{ inputs.release-name }}
         INPUT_RELEASE_VERSION: ${{ inputs.release-version }}
         INPUT_BUILD: ${{ inputs.build }}
-        # The CLI reads the branch, commit, and repository of the release from these variables. On a
-        # pull request, the default SHA is a merge commit that exists in no branch, so the head commit
-        # and branch of the pull request replace it. Runners that do not export these variables, such
-        # as Depot CI, get them from the context.
+        # hog reads the branch, commit, and repository of the release from these variables, and
+        # GITHUB_ACTIONS tells it to use the job's OIDC token. On a pull request, the default SHA is a
+        # merge commit that exists in no branch, so the head commit and branch of the pull request
+        # replace it. Runners that do not export these variables, such as Depot CI, get them from the
+        # context.
         GITHUB_ACTIONS: "true"
         GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         GITHUB_REF_NAME: ${{ github.head_ref || github.ref_name }}

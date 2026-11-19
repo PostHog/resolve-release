@@ -8,25 +8,20 @@
 
 A push to `main` that keeps `VERSION` unchanged releases nothing.
 
-## Update the CLI
+## Update hog
 
-The CLI version and the checksum of its installer are pinned in `action.yml`.
-To upgrade, set `POSTHOG_CLI_VERSION` and recompute the checksum:
-
-```bash
-curl -LsSf "https://github.com/PostHog/posthog/releases/download/posthog-cli%2Fv<X.Y.Z>/posthog-cli-installer.sh" | shasum -a 256
-```
-
-Release a new minor version after a CLI upgrade.
+Callers pick the hog version with the required `hog-version` input, so a hog release needs no release of the action.
+Raise the version the tests use in `.github/workflows/test.yml` to check the action against a new hog.
 
 ## Tests
 
 The test workflow runs the action on Linux and macOS runners.
-The job that resolves a real release needs these settings in the repository.
-Without the secret, the job is skipped and the run shows a notice.
+The job that resolves a real release logs in with its OIDC token, so the repository needs:
 
-- Secret `POSTHOG_CLI_API_KEY`: a personal API key with error tracking write scope.
-- Variable `POSTHOG_CLI_PROJECT_ID`: the ID of the project that holds the test releases.
-- Variable `POSTHOG_CLI_HOST` (optional): the PostHog host, when it is not the US cloud.
+- Variable `POSTHOG_PROJECT_ID`: the ID of the project that holds the test releases.
+- Variable `POSTHOG_HOST` (optional): the PostHog host, when it is not the US cloud.
+- A trust policy for this repository in that project, for pull requests and pushes to `main`, with the `error_tracking:write` scope. Run `hog ci setup --scope error_tracking:write` in a clone of the repository to request it.
 
-To run the script outside GitHub Actions, set the variables that `action.yml` passes to it, plus `RUNNER_OS`, `RUNNER_TEMP`, and `GITHUB_OUTPUT`, then run `bash resolve.sh`.
+Without the variable, the job is skipped and the run shows a notice.
+
+To run the script outside GitHub Actions, set the variables that `action.yml` passes to it, plus `RUNNER_OS`, `RUNNER_TEMP`, `GITHUB_OUTPUT`, and the job's `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, then run `bash resolve.sh`.

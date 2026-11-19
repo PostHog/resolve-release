@@ -160,4 +160,4 @@ jobs:
 
 - Pull requests from forks get no OIDC token. On one, the action logs a warning, leaves every output empty, and passes. Any other job without a token fails, because it's missing `permissions: id-token: write`.
 - The action runs on Linux and macOS runners, on x64 or arm64, and in musl containers such as Alpine. It needs `bash`, `curl` and `jq`, which GitHub-hosted runners include. An Alpine container needs `apk add bash curl jq libstdc++ libgcc` first: the musl build of hog links the C++ runtime.
-- Pin the action to a major version (`@v2`) to get fixes, or to a full version (`@v2.0.1`) to control updates yourself. `hog-sha256` pins the exact hog binary on top of `hog-version`.
+- Pin the action to a major version (`@v2`) to get fixes, or to a full version (`@v2.0.0`) to control updates yourself. `hog-sha256` pins the exact hog binary on top of `hog-version`.

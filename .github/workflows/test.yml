@@ -18,8 +18,10 @@ env:
   HOG_VERSION: 0.1.0
 
 jobs:
+  # A job without `permissions: id-token: write` fails, except on a pull request from a fork, where
+  # the action passes with empty outputs.
   without-oidc:
-    name: Skip without an OIDC token (${{ matrix.os }})
+    name: Without an OIDC token (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -32,20 +34,79 @@ jobs:
 
       - name: Resolve release
         id: release
+        continue-on-error: true
         uses: ./
         with:
           hog-version: ${{ env.HOG_VERSION }}
           project-id: '1'
 
-      - name: Check that every output is empty
+      - name: Check the outcome and that every output is empty
         env:
+          OUTCOME: ${{ steps.release.outcome }}
+          EXPECTED: ${{ github.event.pull_request.head.repo.fork && 'success' || 'failure' }}
           RELEASE_ID: ${{ steps.release.outputs.release-id }}
           RELEASE: ${{ steps.release.outputs.release }}
         run: |
+          if [ "$OUTCOME" != "$EXPECTED" ]; then
+            echo "::error::Expected the step to end in $EXPECTED without an OIDC token, got $OUTCOME"
+            exit 1
+          fi
           if [ -n "$RELEASE_ID" ] || [ -n "$RELEASE" ]; then
             echo "::error::Expected empty outputs without an OIDC token, got release-id '$RELEASE_ID'"
             exit 1
           fi
+
+  # Installs hog on each runner type. A token request URL that refuses connections lets the action get
+  # past the OIDC check, then hog fails at the exchange, after the download and checksum ran.
+  install:
+    name: Install hog (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x64, os: ubuntu-24.04 }
+          - { name: linux-arm64, os: ubuntu-24.04-arm }
+          - { name: darwin-arm64, os: macos-15 }
+          - { name: darwin-x64, os: macos-15-intel }
+          - { name: linux-x64-musl, os: ubuntu-24.04, container: 'alpine:3.21' }
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    timeout-minutes: 5
+    steps:
+      - name: Install bash, curl, jq and the C++ runtime hog needs
+        if: matrix.container != ''
+        run: apk add --no-cache bash curl jq libstdc++ libgcc
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Resolve release
+        id: release
+        continue-on-error: true
+        uses: ./
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: https://127.0.0.1:9/token
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: not-a-token
+        with:
+          hog-version: v${{ env.HOG_VERSION }}
+          # Every archive of hog 0.1.0 the matrix installs, so the pin check passes on each of them.
+          hog-sha256: |
+            811999531f50e991cbb3f19944e2d18a050dcca5880db7924c7456f7fa374565
+            c3dd9ea837775981280b174d5d9ed8b6d7100a37b6039e7c6939a7a6d9e7ebd4
+            c60155637a6c175eac228eba659a5fa7ab8922d9f1c4994c5dbe8ba609650c53
+            1f9a35bfc0d37c8d35e4362357f0caa2f0df8f603321e621ad4668e1ff95f80d
+            02ccda4afca16fc0d97a9cd23cc8f8f107086f85f4564271b3a51e79b170c21d
+          project-id: '1'
+
+      - name: Check that hog runs
+        shell: bash
+        env:
+          TARGET: ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          hog="$RUNNER_TEMP/hog-$HOG_VERSION/hog"
+          [ -f "$RUNNER_TEMP/hog-$HOG_VERSION/hog-$TARGET.tar.gz" ] || { echo "::error::The action didn't download the $TARGET archive"; ls "$RUNNER_TEMP/hog-$HOG_VERSION"; exit 1; }
+          [ "$("$hog" --version)" = "$HOG_VERSION" ] || { echo "::error::hog doesn't run or isn't $HOG_VERSION"; exit 1; }
 
   # Pull requests from forks get no OIDC token, and PostHog trusts only this repository, so the job
   # that resolves a real release runs only when the test project is set.

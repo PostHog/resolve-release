@@ -10,10 +10,10 @@ branding:
 
 inputs:
   hog-version:
-    description: "The hog version to install, such as 0.1.0. The action downloads it from releases.posthog.com and checks it against that version's manifest"
+    description: "The hog version to install, such as 0.1.0. The action downloads it from releases.posthog.com, or the GitHub release when that fails, and checks it against the SHA256SUMS of the GitHub release"
     required: true
   hog-sha256:
-    description: "The SHA-256 of the hog archive for the runner, from the version's manifest.json. When set, the download must match it, which pins the exact binary"
+    description: "SHA-256 checksums of the hog archives the action may install, separated by spaces, commas or newlines, from the version's SHA256SUMS. List one per runner type the workflow uses. When set, the archive for the runner must be one of them, which pins the exact binary"
     required: false
   project-id:
     description: "PostHog project ID. Defaults to `projectId` in posthog.json, then HOG_PROJECT_ID"
@@ -45,7 +45,7 @@ outputs:
     description: "The whole release as JSON. Read a field with `fromJSON(steps.<step-id>.outputs.release).<field>`"
     value: ${{ steps.resolve.outputs.release }}
   hog-path:
-    description: "Path to the hog binary the action installed, so later steps can run it, for example to upload source maps. Empty when no release was resolved"
+    description: "Path to the hog binary the action installed, so later steps can run it, for example to upload source maps. Empty when the action resolved nothing"
     value: ${{ steps.resolve.outputs.hog-path }}
 
 runs:
@@ -62,6 +62,7 @@ runs:
         INPUT_RELEASE_NAME: ${{ inputs.release-name }}
         INPUT_RELEASE_VERSION: ${{ inputs.release-version }}
         INPUT_BUILD: ${{ inputs.build }}
+        FORK_PULL_REQUEST: ${{ github.event.pull_request.head.repo.fork || false }}
         # hog reads the branch, commit, and repository of the release from these variables, and
         # GITHUB_ACTIONS tells it to use the job's OIDC token. On a pull request, the default SHA is a
         # merge commit that exists in no branch, so the head commit and branch of the pull request

@@ -6,7 +6,8 @@ Give the ID to your app as the `POSTHOG_RELEASE_ID` environment variable.
 The SDK sends it as `$release_id` on every event, and error tracking uses it to link each exception to the release it came from.
 The Python SDK reads `POSTHOG_RELEASE_ID` from version 7.59.0.
 
-The action installs [hog](https://github.com/PostHog/posthog/tree/master/hog), the PostHog command line, at the version you pick, checks it against that version's manifest, and runs `hog error-tracking release`.
+The action installs [hog](https://github.com/PostHog/posthog/tree/master/hog), the PostHog command line, at the version you pick, checks it against the `SHA256SUMS` of that version's GitHub release, and runs `hog error-tracking release`.
+The archive comes from releases.posthog.com, or from the GitHub release when that fails.
 If a release with the same name and version already exists, for example because a source map upload created it, the action returns that release instead of creating a new one.
 
 hog logs in with the job's OIDC token, so no PostHog key is stored in GitHub.
@@ -20,7 +21,7 @@ The action does not need a checkout. With one, it reads the project and host fro
 | **Name**          | **Required** | **Description**                                                                                                                                                                                  |
 | ----------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `hog-version`     | Yes          | The hog version to install, such as `0.1.0`. Pin a version you tested, so a new hog release never changes a build on its own                                                                     |
-| `hog-sha256`      | No           | The SHA-256 of the hog archive for the runner, from the version's `manifest.json`. When set, the download must match it, which pins the exact binary                                            |
+| `hog-sha256`      | No           | Checksums of the hog archives the action may install, from the version's `SHA256SUMS`, separated by spaces, commas or newlines. List one per runner type, so a matrix can pin all of them |
 | `project-id`      | No           | PostHog project ID. Defaults to `projectId` in `posthog.json`, then `HOG_PROJECT_ID`                                                                                                            |
 | `host`            | No           | PostHog host URL. Defaults to `host` in `posthog.json`, then `HOG_HOST`, then the US cloud. For the EU cloud, set `https://eu.posthog.com`                                                      |
 | `release-name`    | No           | Release name. If not provided, the action uses the repository name                                                                                                                              |
@@ -35,7 +36,7 @@ The action does not need a checkout. With one, it reads the project and host fro
 | `release-name`    | Name of the release in PostHog                                                                                       |
 | `release-version` | Version of the release in PostHog, including the build number when one was given                                    |
 | `release`         | The whole release as JSON. Read a field with `fromJSON(steps.<step-id>.outputs.release).<field>`                      |
-| `hog-path`        | Path to the hog binary the action installed, so later steps can run it, for example to upload source maps            |
+| `hog-path`        | Path to the hog binary the action installed, so later steps can run it. Pass it the release outputs, as below        |
 
 ## Example usage
 
@@ -89,6 +90,8 @@ The action fails the step when the hog download, the checksum, the OIDC exchange
 To deploy anyway, let the step fail without failing the job, and cap how long it can take:
 
 ```yaml
+- uses: actions/checkout@v6 # for the project and host in posthog.json
+
 - name: Resolve PostHog release
   id: release
   continue-on-error: true
@@ -99,6 +102,19 @@ To deploy anyway, let the step fail without failing the job, and cap how long it
 ```
 
 The `release-id` output is then empty, and an empty `POSTHOG_RELEASE_ID` is safe to pass on: the SDK treats it as unset.
+
+### Upload source maps with the same hog
+
+Later steps can run the hog the action installed. Name the release with the action's outputs, because a later step doesn't get the commit and branch the action resolved, which differ on a pull request:
+
+```yaml
+- name: Upload source maps
+  env:
+    HOG: ${{ steps.release.outputs.hog-path }}
+    RELEASE_NAME: ${{ steps.release.outputs.release-name }}
+    RELEASE_VERSION: ${{ steps.release.outputs.release-version }}
+  run: '"$HOG" error-tracking process dist --release-name "$RELEASE_NAME" --release-version "$RELEASE_VERSION"'
+```
 
 ### Use one release in several jobs
 
@@ -142,6 +158,6 @@ jobs:
 
 ## Notes
 
-- Pull requests from forks get no OIDC token. Without one, the action logs a warning, leaves every output empty, and passes.
-- The action runs on Linux and macOS runners, on x64 or arm64. It needs `curl` and `jq`, which GitHub-hosted runners include.
-- Pin the action to a major version (`@v2`) to get fixes, or to a full version (`@v2.0.0`) to control updates yourself. `hog-sha256` pins the exact hog binary on top of `hog-version`.
+- Pull requests from forks get no OIDC token. On one, the action logs a warning, leaves every output empty, and passes. Any other job without a token fails, because it's missing `permissions: id-token: write`.
+- The action runs on Linux and macOS runners, on x64 or arm64, and in musl containers such as Alpine. It needs `bash`, `curl` and `jq`, which GitHub-hosted runners include. An Alpine container needs `apk add bash curl jq libstdc++ libgcc` first: the musl build of hog links the C++ runtime.
+- Pin the action to a major version (`@v2`) to get fixes, or to a full version (`@v2.0.1`) to control updates yourself. `hog-sha256` pins the exact hog binary on top of `hog-version`.

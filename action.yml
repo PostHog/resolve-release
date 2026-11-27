@@ -47,6 +47,9 @@ outputs:
   hog-path:
     description: "Path to the hog binary the action installed, so later steps can run it, for example to upload source maps. hog-worker, which hog needs for error tracking files, sits next to it. Empty when the action resolved nothing"
     value: ${{ steps.resolve.outputs.hog-path }}
+  hog-worker-path:
+    description: "Path to the hog-worker binary the action installed, in the same folder as hog-path. hog starts it on its own for error tracking files, so copy it along when you move hog. Empty when the action resolved nothing, or for hog 0.1.0, which has no hog-worker"
+    value: ${{ steps.resolve.outputs.hog-worker-path }}
 
 runs:
   using: "composite"

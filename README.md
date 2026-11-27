@@ -36,7 +36,8 @@ The action does not need a checkout. With one, it reads the project and host fro
 | `release-name`    | Name of the release in PostHog                                                                                       |
 | `release-version` | Version of the release in PostHog, including the build number when one was given                                    |
 | `release`         | The whole release as JSON. Read a field with `fromJSON(steps.<step-id>.outputs.release).<field>`                      |
-| `hog-path`        | Path to the hog binary the action installed, so later steps can run it. Pass it the release outputs, as below. `hog-worker` sits next to it |
+| `hog-path`        | Path to the hog binary the action installed, so later steps can run it. Pass it the release outputs, as below        |
+| `hog-worker-path` | Path to `hog-worker`, in the same folder as `hog-path`. Copy it along when you move hog. Empty for hog 0.1.0         |
 
 ## Example usage
 

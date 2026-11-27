@@ -188,6 +188,7 @@ jobs:
           RELEASE_VERSION: ${{ steps.release.outputs.release-version }}
           RELEASE: ${{ steps.release.outputs.release }}
           HOG_PATH: ${{ steps.release.outputs.hog-path }}
+          HOG_WORKER_PATH: ${{ steps.release.outputs.hog-worker-path }}
           BUILD_RELEASE_ID: ${{ steps.build.outputs.release-id }}
           BUILD_RELEASE_VERSION: ${{ steps.build.outputs.release-version }}
           EXPECTED_NAME: resolve-release-test-${{ runner.os }}
@@ -204,3 +205,5 @@ jobs:
           [ "$BUILD_RELEASE_VERSION" = "$EXPECTED_VERSION+42" ] || fail "release-version with a build is '$BUILD_RELEASE_VERSION', expected '$EXPECTED_VERSION+42'"
           [ "$BUILD_RELEASE_ID" != "$RELEASE_ID" ] || fail "a build number did not give a separate release"
           "$HOG_PATH" --version >/dev/null || fail "hog-path '$HOG_PATH' does not run"
+          [ -x "$HOG_WORKER_PATH" ] || fail "hog-worker-path '$HOG_WORKER_PATH' is not an executable file"
+          [ "$(dirname "$HOG_WORKER_PATH")" = "$(dirname "$HOG_PATH")" ] || fail "hog-worker-path '$HOG_WORKER_PATH' is not next to hog-path '$HOG_PATH'"

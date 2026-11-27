@@ -41,8 +41,9 @@ case "$(uname -s)/$(uname -m)" in
         exit 1
         ;;
 esac
-# musl systems such as Alpine have a loader named ld-musl-<arch>.so.1, and glibc systems don't.
-if [ "${target%%-*}" = linux ]; then
+# musl systems such as Alpine have a loader named ld-musl-<arch>.so.1. A glibc system can have one
+# too, from a musl package, and the musl hog doesn't run there, so glibc wins whenever it's present.
+if [ "${target%%-*}" = linux ] && ! getconf GNU_LIBC_VERSION >/dev/null 2>&1; then
     for loader in /lib/ld-musl-* /usr/lib/ld-musl-*; do
         if [ -e "$loader" ]; then
             target="$target-musl"

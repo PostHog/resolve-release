@@ -20,7 +20,7 @@ The action does not need a checkout. With one, it reads the project and host fro
 
 | **Name**          | **Required** | **Description**                                                                                                                                                                                  |
 | ----------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `hog-version`     | Yes          | The hog version to install, such as `0.1.0`. Pin a version you tested, so a new hog release never changes a build on its own                                                                     |
+| `hog-version`     | Yes          | The hog version to install, such as `0.3.0`. Pin a version you tested, so a new hog release never changes a build on its own                                                                     |
 | `hog-sha256`      | No           | Checksums of the hog archives the action may install, from the version's `SHA256SUMS`, separated by spaces, commas or newlines. List one per runner type, so a matrix can pin all of them |
 | `project-id`      | No           | PostHog project ID. Defaults to `projectId` in `posthog.json`, then `HOG_PROJECT_ID`                                                                                                            |
 | `host`            | No           | PostHog host URL. Defaults to `host` in `posthog.json`, then `HOG_HOST`, then the US cloud. For the EU cloud, set `https://eu.posthog.com`                                                      |
@@ -36,7 +36,7 @@ The action does not need a checkout. With one, it reads the project and host fro
 | `release-name`    | Name of the release in PostHog                                                                                       |
 | `release-version` | Version of the release in PostHog, including the build number when one was given                                    |
 | `release`         | The whole release as JSON. Read a field with `fromJSON(steps.<step-id>.outputs.release).<field>`                      |
-| `hog-path`        | Path to the hog binary the action installed, so later steps can run it. Pass it the release outputs, as below        |
+| `hog-path`        | Path to the hog binary the action installed, so later steps can run it. Pass it the release outputs, as below. `hog-worker` sits next to it |
 
 ## Example usage
 
@@ -62,7 +62,7 @@ jobs:
         id: release
         uses: PostHog/resolve-release@v2
         with:
-          hog-version: 0.1.0
+          hog-version: 0.3.0
           # Without a posthog.json that names them
           # project-id: ${{ vars.POSTHOG_PROJECT_ID }}
           # host: https://eu.posthog.com
@@ -98,14 +98,15 @@ To deploy anyway, let the step fail without failing the job, and cap how long it
   timeout-minutes: 5
   uses: PostHog/resolve-release@v2
   with:
-    hog-version: 0.1.0
+    hog-version: 0.3.0
 ```
 
 The `release-id` output is then empty, and an empty `POSTHOG_RELEASE_ID` is safe to pass on: the SDK treats it as unset.
 
 ### Upload source maps with the same hog
 
-Later steps can run the hog the action installed. Name the release with the action's outputs, because a later step doesn't get the commit and branch the action resolved, which differ on a pull request:
+Later steps can run the hog the action installed. From hog 0.2.0, hog reads and writes the build files in `hog-worker`, which the action installs next to it, so leave the two in the same folder.
+Name the release with the action's outputs, because a later step doesn't get the commit and branch the action resolved, which differ on a pull request:
 
 ```yaml
 - name: Upload source maps
@@ -135,7 +136,7 @@ jobs:
       - id: release
         uses: PostHog/resolve-release@v2
         with:
-          hog-version: 0.1.0
+          hog-version: 0.3.0
 
   build:
     needs: release
@@ -152,7 +153,7 @@ jobs:
 
 ## Upgrade from v1
 
-- Set `hog-version` to the hog version to install, such as `0.1.0`.
+- Set `hog-version` to the hog version to install, such as `0.3.0`.
 - Remove `api-key`. v2 uses the job's OIDC token instead: add `permissions: id-token: write` to the job, and run `hog ci setup --scope error_tracking:write` in the repository once. Then delete the PostHog key secret.
 - `project-id` is optional. Put `host` and `projectId` in `posthog.json`, or keep the inputs.
 

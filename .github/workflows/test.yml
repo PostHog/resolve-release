@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  HOG_VERSION: 0.1.0
+  HOG_VERSION: 0.3.0
 
 jobs:
   # A job without `permissions: id-token: write` fails, except on a pull request from a fork, where
@@ -89,13 +89,13 @@ jobs:
           ACTIONS_ID_TOKEN_REQUEST_TOKEN: not-a-token
         with:
           hog-version: v${{ env.HOG_VERSION }}
-          # Every archive of hog 0.1.0 the matrix installs, so the pin check passes on each of them.
+          # Every archive of hog 0.3.0 the matrix installs, so the pin check passes on each of them.
           hog-sha256: |
-            811999531f50e991cbb3f19944e2d18a050dcca5880db7924c7456f7fa374565
-            c3dd9ea837775981280b174d5d9ed8b6d7100a37b6039e7c6939a7a6d9e7ebd4
-            c60155637a6c175eac228eba659a5fa7ab8922d9f1c4994c5dbe8ba609650c53
-            1f9a35bfc0d37c8d35e4362357f0caa2f0df8f603321e621ad4668e1ff95f80d
-            02ccda4afca16fc0d97a9cd23cc8f8f107086f85f4564271b3a51e79b170c21d
+            9dff37a41ec5bf947c190fc4760e95a051be9ea7744eb3d0f4a4e7be695674bc
+            35a0a6de2dfd476e2e594002fa7eb5b90d3b2a2ec578983075706df1c1b5b038
+            cb7caf2f18d5e9200ab840e8b07c3b4f5d98364a2ab0eac047500afd6d66c515
+            3180c2b064fe5d2b325964d70e0bef7e706411ef7fe137d979a68163adabc5da
+            e17bedaca87ef2d034a4c6a407d675f488a15171627f1482159b216f28c12096
           project-id: '1'
 
       - name: Check that hog runs
@@ -107,6 +107,19 @@ jobs:
           hog="$RUNNER_TEMP/hog-$HOG_VERSION/hog"
           [ -f "$RUNNER_TEMP/hog-$HOG_VERSION/hog-$TARGET.tar.gz" ] || { echo "::error::The action didn't download the $TARGET archive"; ls "$RUNNER_TEMP/hog-$HOG_VERSION"; exit 1; }
           [ "$("$hog" --version)" = "$HOG_VERSION" ] || { echo "::error::hog doesn't run or isn't $HOG_VERSION"; exit 1; }
+
+      # A dry run of process needs no login, and fails with worker_missing when hog-worker isn't next to hog.
+      - name: Check that hog starts hog-worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          hog="$RUNNER_TEMP/hog-$HOG_VERSION/hog"
+          dist="$RUNNER_TEMP/dist"
+          mkdir -p "$dist"
+          printf 'console.log(1);\n//# sourceMappingURL=app.js.map\n' >"$dist/app.js"
+          printf '{"version":3,"sources":["app.ts"],"names":[],"mappings":"AAAA"}' >"$dist/app.js.map"
+          result=$(HOG_NO_UPDATE_CHECK=1 "$hog" error-tracking process "$dist" --dry-run -o json)
+          jq -e '.symbolSets | length == 1' <<<"$result" >/dev/null || { echo "::error::hog planned no symbol set: $result"; exit 1; }
 
   # Pull requests from forks get no OIDC token, and PostHog trusts only this repository, so the job
   # that resolves a real release runs only when the test project is set.

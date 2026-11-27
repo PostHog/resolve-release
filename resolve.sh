@@ -90,7 +90,9 @@ if [ -n "${HOG_SHA256:-}" ] && ! tr '[:upper:]' '[:lower:]' <<<"$HOG_SHA256" | t
     echo "::error title=hog checksum not pinned::$file of hog $version has the checksum $actual, which the hog-sha256 input doesn't list."
     exit 1
 fi
-tar -xzf "$dir/$file" -C "$dir" hog
+# The whole archive, because hog runs its error tracking file work in hog-worker, which it starts only
+# from its own folder. Archives from hog 0.2.0 on ship the two together.
+tar -xzf "$dir/$file" -C "$dir"
 hog="$dir/hog"
 
 export HOG_NO_UPDATE_CHECK=1

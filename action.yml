@@ -10,7 +10,7 @@ branding:
 
 inputs:
   hog-version:
-    description: "The hog version to install, such as 0.1.0. The action downloads it from releases.posthog.com, or the GitHub release when that fails, and checks it against the SHA256SUMS of the GitHub release"
+    description: "The hog version to install, such as 0.3.0. The action downloads it from releases.posthog.com, or the GitHub release when that fails, and checks it against the SHA256SUMS of the GitHub release"
     required: true
   hog-sha256:
     description: "SHA-256 checksums of the hog archives the action may install, separated by spaces, commas or newlines, from the version's SHA256SUMS. List one per runner type the workflow uses. When set, the archive for the runner must be one of them, which pins the exact binary"
@@ -45,8 +45,11 @@ outputs:
     description: "The whole release as JSON. Read a field with `fromJSON(steps.<step-id>.outputs.release).<field>`"
     value: ${{ steps.resolve.outputs.release }}
   hog-path:
-    description: "Path to the hog binary the action installed, so later steps can run it, for example to upload source maps. Empty when the action resolved nothing"
+    description: "Path to the hog binary the action installed, so later steps can run it, for example to upload source maps. hog-worker, which hog needs for error tracking files, sits next to it. Empty when the action resolved nothing"
     value: ${{ steps.resolve.outputs.hog-path }}
+  hog-worker-path:
+    description: "Path to the hog-worker binary the action installed, in the same folder as hog-path. hog starts it on its own for error tracking files, so copy it along when you move hog. Empty when the action resolved nothing, or for hog 0.1.0, which has no hog-worker"
+    value: ${{ steps.resolve.outputs.hog-worker-path }}
 
 runs:
   using: "composite"

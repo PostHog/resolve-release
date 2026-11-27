@@ -90,8 +90,15 @@ if [ -n "${HOG_SHA256:-}" ] && ! tr '[:upper:]' '[:lower:]' <<<"$HOG_SHA256" | t
     echo "::error title=hog checksum not pinned::$file of hog $version has the checksum $actual, which the hog-sha256 input doesn't list."
     exit 1
 fi
-tar -xzf "$dir/$file" -C "$dir" hog
+# The whole archive, because hog runs its error tracking file work in hog-worker, which it starts only
+# from its own folder. Archives from hog 0.2.0 on ship the two together.
+tar -xzf "$dir/$file" -C "$dir"
 hog="$dir/hog"
+# hog 0.1.0 archives hold no hog-worker, so the output stays empty for them.
+hog_worker=""
+if [ -f "$dir/hog-worker" ]; then
+    hog_worker="$dir/hog-worker"
+fi
 
 export HOG_NO_UPDATE_CHECK=1
 if [ -n "${INPUT_PROJECT_ID:-}" ]; then
@@ -118,6 +125,7 @@ release="$("$hog" "${args[@]}")"
 if [ -z "$release" ] || [ "$release" = null ]; then
     echo "::warning title=No PostHog release::hog could not name a release. Set the release-name and release-version inputs."
     echo "hog-path=$hog" >>"$GITHUB_OUTPUT"
+    echo "hog-worker-path=$hog_worker" >>"$GITHUB_OUTPUT"
     exit 0
 fi
 
@@ -132,5 +140,6 @@ output release-name "$(jq -r '.project' <<<"$release")"
 output release-version "$(jq -r '.version' <<<"$release")"
 output release "$(jq -c '.' <<<"$release")"
 output hog-path "$hog"
+output hog-worker-path "$hog_worker"
 
 echo "Resolved release $(jq -r '"\(.project)@\(.version) with id \(.id)"' <<<"$release")"

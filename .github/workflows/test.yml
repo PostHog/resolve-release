@@ -59,7 +59,7 @@ jobs:
   # Installs hog on each runner type. A token request URL that refuses connections lets the action get
   # past the OIDC check, then hog fails at the exchange, after the download and checksum ran.
   install:
-    name: Install hog (${{ matrix.name }})
+    name: Install hog (${{ matrix.name }}${{ matrix.musl-loader && ', musl loader present' || '' }})
     strategy:
       fail-fast: false
       matrix:
@@ -69,6 +69,8 @@ jobs:
           - { name: darwin-arm64, os: macos-15 }
           - { name: darwin-x64, os: macos-15-intel }
           - { name: linux-x64-musl, os: ubuntu-24.04, container: 'alpine:3.21' }
+          # A glibc runner with the musl loader installed still needs the glibc archive.
+          - { name: linux-x64, os: ubuntu-24.04, musl-loader: true }
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     timeout-minutes: 5
@@ -76,6 +78,10 @@ jobs:
       - name: Install bash, curl, jq and the C++ runtime hog needs
         if: matrix.container != ''
         run: apk add --no-cache bash curl jq libstdc++ libgcc
+
+      - name: Install the musl loader
+        if: matrix.musl-loader
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq musl
 
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
